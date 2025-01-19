@@ -42,21 +42,31 @@ class AggressiveHunterBrain(SpaceshipBrain):
         if angle_diff > 180:
             angle_diff -= 360
 
-        # Shooting logic: shoot if the target is almost aligned
-        angle_tolerance = 15  # Tolerance for shooting
+        # Shooting logic: shoot if the target is roughly aligned
+        angle_tolerance = 20  # Increase tolerance for shooting
         if abs(angle_diff) < angle_tolerance:
             return Action.SHOOT
 
-        # Movement logic: always accelerate unless too close
-        if distance > self.optimal_range * 0.5:
+        # Aggressive movement logic: continuous motion
+        if distance > self.optimal_range * 0.7:  # If far from the target
+            if abs(angle_diff) > 20:  # Rotate toward the target
+                if angle_diff > 0:
+                    return Action.ROTATE_RIGHT
+                else:
+                    return Action.ROTATE_LEFT
+            return Action.ACCELERATE  # Move closer
+
+        if distance < self.optimal_range * 0.5:  # If too close, evade by rotating and moving
+            if angle_diff > 0:
+                return Action.ROTATE_LEFT  # Rotate left to change position
+            else:
+                return Action.ROTATE_RIGHT
+
+        # Default to moving and rotating when near optimal range
+        if abs(angle_diff) > 20:
             if angle_diff > 0:
                 return Action.ROTATE_RIGHT
-            elif angle_diff < 0:
-                return Action.ROTATE_LEFT
             else:
-                return Action.ACCELERATE
+                return Action.ROTATE_LEFT
 
-        # Default to aligning with the target
-        if angle_diff > 0:
-            return Action.ROTATE_RIGHT
-        return Action.ROTATE_LEFT
+        return Action.ACCELERATE
