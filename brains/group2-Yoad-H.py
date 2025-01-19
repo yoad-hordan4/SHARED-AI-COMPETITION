@@ -1,5 +1,6 @@
 from brain_interface import SpaceshipBrain, Action, GameState
 import math
+import time
 
 class AggressiveHunterBrain(SpaceshipBrain):
     def __init__(self):
@@ -12,61 +13,63 @@ class AggressiveHunterBrain(SpaceshipBrain):
         return self._id
 
     def decide_what_to_do_next(self, game_state: GameState) -> Action:
-        # Find my ship
         try:
+            # Locate my ship
             my_ship = next(ship for ship in game_state.ships if ship['id'] == self.id)
         except StopIteration:
-            return Action.ROTATE_RIGHT  # Default action if my ship isn't found
+            return Action.ROTATE_RIGHT  # Default action if my ship is not found
 
-        # Find all enemy ships that aren't destroyed (health > 0)
+        current_time = time.time()
+
+        # Initialize health and movement time if not already set
+        if not hasattr(self, 'last_health'):
+            self.last_health = my_ship['health']
+        if not hasattr(self, 'last_movement_time'):
+            self.last_movement_time = current_time
+
+        # Handle being hit: Move immediately if health decreases
+        if my_ship['health'] < self.last_health:
+            self.last_health = my_ship['health']
+            self.last_movement_time = current_time
+            return Action.ACCELERATE if my_ship['health'] % 2 == 0
+
+        # Identify active enemies
         enemy_ships = [ship for ship in game_state.ships if ship['id'] != self.id and ship['health'] > 0]
-
         if not enemy_ships:
-            self.current_target_id = None  # Reset target if no enemies are left
-            return Action.ROTATE_RIGHT
+            self.current_target_id = None
+            return Action.ROTATE_RIGHT  # Default if no enemies are left
 
-        # Select the closest enemy ship
+        # Find the closest enemy
         closest_enemy = min(enemy_ships, key=lambda ship: math.hypot(ship['x'] - my_ship['x'], ship['y'] - my_ship['y']))
         self.current_target_id = closest_enemy['id']
 
-        # Calculate relative position to the closest enemy
+        # Calculate relative position and angle to the target
         dx = closest_enemy['x'] - my_ship['x']
         dy = closest_enemy['y'] - my_ship['y']
         distance = math.hypot(dx, dy)
-
-        # Determine the angle to the target
         target_line_angle = math.degrees(math.atan2(dy, dx))
-
-        # Calculate the angle difference and normalize it to -180 to 180
         angle_diff = (target_line_angle - my_ship['angle'] + 360) % 360
         if angle_diff > 180:
             angle_diff -= 360
 
-        # Shooting logic: shoot if the target is roughly aligned
-        angle_tolerance = 20  # Increase tolerance for shooting
+        # Shooting logic: shoot if the target is well-aligned
+        angle_tolerance = 6  # Reduced tolerance for better precision
         if abs(angle_diff) < angle_tolerance:
             return Action.SHOOT
 
-        # Aggressive movement logic: continuous motion
+        # Handle inactivity: move if stagnant for 5+ seconds
+        if current_time - self.last_movement_time > 5:
+            self.last_movement_time = current_time
+            return Action.ACCELERATE if distance > self.optimal_range else Action.ROTATE_LEFT
+
+        # Movement logic: align precisely or close the gap
         if distance > self.optimal_range * 0.7:  # If far from the target
-            if abs(angle_diff) > 20:  # Rotate toward the target
-                if angle_diff > 0:
-                    return Action.ROTATE_RIGHT
-                else:
-                    return Action.ROTATE_LEFT
-            return Action.ACCELERATE  # Move closer
+            if abs(angle_diff) > angle_tolerance:  # Rotate toward target
+                self.last_movement_time = current_time
+                return Action.ROTATE_RIGHT if angle_diff > 0 else Action.ROTATE_LEFT
+            self.last_movement_time = current_time
+            return Action.ACCELERATE
 
-        if distance < self.optimal_range * 0.5:  # If too close, evade by rotating and moving
-            if angle_diff > 0:
-                return Action.ROTATE_LEFT  # Rotate left to change position
-            else:
-                return Action.ROTATE_RIGHT
-
-        # Default to moving and rotating when near optimal range
-        if abs(angle_diff) > 20:
-            if angle_diff > 0:
-                return Action.ROTATE_RIGHT
-            else:
-                return Action.ROTATE_LEFT
-
-        return Action.ACCELERATE
+        # Default to aligning with the target when near the optimal range
+        self.last_movement_time = current_time
+        return Action.ROTATE_RIGHT if angle_diff > 0 else Action.ROTATE_LEFT
