@@ -25,50 +25,38 @@ class AggressiveHunterBrain(SpaceshipBrain):
             self.current_target_id = None  # Reset target if no enemies are left
             return Action.ROTATE_RIGHT
 
-        # Prioritize targets: closest or lowest health
-        current_target = next((ship for ship in enemy_ships if ship['id'] == self.current_target_id), None)
-        if not current_target or current_target['health'] <= 0:
-            current_target = min(
-                enemy_ships,
-                key=lambda ship: (
-                    math.hypot(ship['x'] - my_ship['x'], ship['y'] - my_ship['y']),  # Closest first
-                    -ship['health']  # Then prioritize lowest health
-                )
-            )
-            self.current_target_id = current_target['id']
+        # Select the closest enemy ship
+        closest_enemy = min(enemy_ships, key=lambda ship: math.hypot(ship['x'] - my_ship['x'], ship['y'] - my_ship['y']))
+        self.current_target_id = closest_enemy['id']
 
-        # Calculate relative position to target
-        dx = current_target['x'] - my_ship['x']
-        dy = current_target['y'] - my_ship['y']
+        # Calculate relative position to the closest enemy
+        dx = closest_enemy['x'] - my_ship['x']
+        dy = closest_enemy['y'] - my_ship['y']
         distance = math.hypot(dx, dy)
 
-        # Predictive targeting: estimate future position
-        target_speed = current_target.get('speed', 0)
-        target_angle = math.radians(current_target.get('angle', 0))
-        future_x = current_target['x'] + target_speed * math.cos(target_angle)
-        future_y = current_target['y'] + target_speed * math.sin(target_angle)
-        dx = future_x - my_ship['x']
-        dy = future_y - my_ship['y']
+        # Determine the angle to the target
         target_line_angle = math.degrees(math.atan2(dy, dx))
 
-        # Calculate angle difference and normalize to -180 to 180
+        # Calculate the angle difference and normalize it to -180 to 180
         angle_diff = (target_line_angle - my_ship['angle'] + 360) % 360
         if angle_diff > 180:
             angle_diff -= 360
 
-        # Shooting logic: shoot whenever the alignment is close enough
+        # Shooting logic: shoot if the target is almost aligned
         angle_tolerance = 15  # Tolerance for shooting
         if abs(angle_diff) < angle_tolerance:
             return Action.SHOOT
 
-        # Movement logic
-        if distance > self.optimal_range:  # Too far from the target
-            return Action.ACCELERATE
+        # Movement logic: always accelerate unless too close
+        if distance > self.optimal_range * 0.5:
+            if angle_diff > 0:
+                return Action.ROTATE_RIGHT
+            elif angle_diff < 0:
+                return Action.ROTATE_LEFT
+            else:
+                return Action.ACCELERATE
 
-        if distance < self.optimal_range * 0.8:  # Too close to the target
-            return Action.BRAKE
-
-        # Rotation logic to align with the target
+        # Default to aligning with the target
         if angle_diff > 0:
             return Action.ROTATE_RIGHT
         return Action.ROTATE_LEFT
