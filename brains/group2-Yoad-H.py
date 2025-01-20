@@ -26,12 +26,24 @@ class AggressiveHunterBrain(SpaceshipBrain):
             self.last_health = my_ship['health']
         if not hasattr(self, 'last_movement_time'):
             self.last_movement_time = current_time
+        if not hasattr(self, 'hit_time'):
+            self.hit_time = 0  # Tracks when the ship was hit
+        if not hasattr(self, 'missed_shots'):
+            self.missed_shots = 0  # Tracks the number of consecutive missed shots
 
-        # Handle being hit: Move immediately if health decreases
+
+        # Handle being hit: Perform aggressive evasive actions if health decreases
         if my_ship['health'] < self.last_health:
             self.last_health = my_ship['health']
-            self.last_movement_time = current_time
-            return Action.ACCELERATE if my_ship['health'] % 2 == 0
+            self.hit_time = current_time  # Store the time of the hit
+
+            # Perform multiple movements after being hit (rotate and accelerate)
+            if current_time - self.hit_time < 1:  # If it was hit in the last 2 seconds
+                # Randomize rotation and acceleration multiple times
+                #if (current_time - self.hit_time) % 0.5 < 0.25:  # Every 0.5 seconds, rotate
+                #    return Action.ROTATE_LEFT if (current_time - self.hit_time) % 1 < 0.5 else Action.ROTATE_RIGHT
+                #else:
+                return Action.ACCELERATE
 
         # Identify active enemies
         enemy_ships = [ship for ship in game_state.ships if ship['id'] != self.id and ship['health'] > 0]
@@ -57,10 +69,12 @@ class AggressiveHunterBrain(SpaceshipBrain):
         if abs(angle_diff) < angle_tolerance:
             return Action.SHOOT
 
+        move_timer = 0.5
         # Handle inactivity: move if stagnant for 5+ seconds
-        if current_time - self.last_movement_time > 5:
-            self.last_movement_time = current_time
-            return Action.ACCELERATE if distance > self.optimal_range else Action.ROTATE_LEFT
+        if current_time - self.last_movement_time > 3:
+            if current_time - self.last_movement_time > 5:
+                self.last_movement_time = current_time
+            return Action.ACCELERATE #if distance > self.optimal_range else Action.ROTATE_LEFT
 
         # Movement logic: align precisely or close the gap
         if distance > self.optimal_range * 0.7:  # If far from the target
